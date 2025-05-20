@@ -1,2 +1,2 @@
 # OASCController
-Oculus All Sky Camera Controller 
+Oculus All Sky Camera Controller Raspberry Pi version
