@@ -43,7 +43,7 @@ async function testSXCamera() {
     }
     
     // 이미지 캡처
-    const exposureTime = 1.0; // 1초 노출
+    const exposureTime = 10.0; // 1초 노출
     console.log(`이미지 캡처 시작 (노출 시간: ${exposureTime}초)...`);
     
 // 이미지 저장 부분 수정
