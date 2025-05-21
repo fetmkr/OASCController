@@ -1,0 +1,20 @@
+{
+  "name": "oasccontroller",
+  "version": "1.0.0",
+  "description": "Oculus All Sky Camera Controller Raspberry Pi version",
+  "main": "app.js",
+  "type": "module",
+  "scripts": {
+    "start": "node app.js",
+    "build": "cd src && node-gyp rebuild"
+  },
+  "dependencies": {
+    "node-addon-api": "^5.0.0",
+    "sharp": "^0.34.2"
+  },
+  "devDependencies": {
+    "node-gyp": "^9.1.0"
+  },
+  "author": "hojun",
+  "license": "ISC"
+}
