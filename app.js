@@ -43,7 +43,7 @@ async function testSXCamera() {
     }
     
     // 이미지 캡처
-    const exposureTime = 60.0; //  노출
+    const exposureTime = 5.0; //  노출
     console.log(`이미지 캡처 시작 (노출 시간: ${exposureTime}초)...`);
     
 // 이미지 저장 부분 수정
@@ -62,6 +62,11 @@ try {
   const jpgFilename = join(imagesDir, `capture_${timestamp}.jpg`);
   await camera.saveAsJPG(image, jpgFilename, { quality: 90, stretch: true });
   console.log(`이미지가 저장되었습니다: ${jpgFilename}`);
+
+  const fitsFilename = join(imagesDir, `capture_${timestamp}.fits`);
+  // FITS 형식으로 저장
+  await camera.saveAsFits(image, fitsFilename);
+  console.log(`이미지가 저장되었습니다: ${fitsFilename}`);
   
   // 원본 PGM 형식 저장 (선택 사항)
   // const pgmFilename = join(imagesDir, `capture_${timestamp}.pgm`);

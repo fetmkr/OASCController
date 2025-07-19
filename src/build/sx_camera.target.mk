@@ -40,13 +40,13 @@ CFLAGS_CC_Debug := \
 	-std=gnu++17
 
 INCS_Debug := \
-	-I/home/pi/.cache/node-gyp/18.17.1/include/node \
-	-I/home/pi/.cache/node-gyp/18.17.1/src \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/openssl/config \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/openssl/openssl/include \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/uv/include \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/zlib \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/v8/include \
+	-I/root/.cache/node-gyp/18.20.6/include/node \
+	-I/root/.cache/node-gyp/18.20.6/src \
+	-I/root/.cache/node-gyp/18.20.6/deps/openssl/config \
+	-I/root/.cache/node-gyp/18.20.6/deps/openssl/openssl/include \
+	-I/root/.cache/node-gyp/18.20.6/deps/uv/include \
+	-I/root/.cache/node-gyp/18.20.6/deps/zlib \
+	-I/root/.cache/node-gyp/18.20.6/deps/v8/include \
 	-I/home/pi/OASCController/node_modules/node-addon-api
 
 DEFS_Release := \
@@ -84,13 +84,13 @@ CFLAGS_CC_Release := \
 	-std=gnu++17
 
 INCS_Release := \
-	-I/home/pi/.cache/node-gyp/18.17.1/include/node \
-	-I/home/pi/.cache/node-gyp/18.17.1/src \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/openssl/config \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/openssl/openssl/include \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/uv/include \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/zlib \
-	-I/home/pi/.cache/node-gyp/18.17.1/deps/v8/include \
+	-I/root/.cache/node-gyp/18.20.6/include/node \
+	-I/root/.cache/node-gyp/18.20.6/src \
+	-I/root/.cache/node-gyp/18.20.6/deps/openssl/config \
+	-I/root/.cache/node-gyp/18.20.6/deps/openssl/openssl/include \
+	-I/root/.cache/node-gyp/18.20.6/deps/uv/include \
+	-I/root/.cache/node-gyp/18.20.6/deps/zlib \
+	-I/root/.cache/node-gyp/18.20.6/deps/v8/include \
 	-I/home/pi/OASCController/node_modules/node-addon-api
 
 OBJS := \

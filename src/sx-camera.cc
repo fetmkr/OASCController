@@ -46,7 +46,7 @@ private:
   bool ClaimAnyInterface();
   bool GetFirmwareVersionInternal(float &version);
   bool SendTwoStageCommand(unsigned char cmdCode, unsigned char *responseData, int &responseLength);
-  bool CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime);
+  bool CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime, bool enableBinning = true);
   
   // 필드
   libusb_device_handle *handle;
@@ -677,52 +677,538 @@ Napi::Value SXCamera::DebugCamera(const Napi::CallbackInfo& info) {
   return Napi::Boolean::New(env, success);
 }
 
-bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime) {
+// bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime) {
+//   int transferred = 0;
+//   int res = 0;
+  
+//   // 변환: 밀리초 단위 노출 시간 계산
+//   uint32_t exposureMs = static_cast<uint32_t>(exposureTime * 1000.0f);
+  
+//   // READ_PIXELS_DELAYED 명령 구성 (14바이트 파라미터)
+//   unsigned char cmd[22] = {
+//     // 명령 헤더 (8바이트)
+//     //0x40, 0x02, 0x00, 0x00, 0x00, 0x00, 14, 0,
+//     0x40, 0x02, 0x8B, 0x00, 0x00, 0x00, 14, 0,
+
+    
+//     // 파라미터 블록 (14바이트)
+//     0, 0,                                        // X_OFFSET_L, X_OFFSET_H
+//     0, 0,                                        // Y_OFFSET_L, Y_OFFSET_H
+//     0x70, 0x05,                                  // WIDTH_L, WIDTH_H (1392)
+//     0x10, 0x04,                                  // HEIGHT_L, HEIGHT_H (1040)
+//     1, 1,                                        // X_BIN, Y_BIN
+//     static_cast<unsigned char>(exposureMs & 0xFF),               // DELAY_0 (노출 시간 밀리초, 하위 바이트)
+//     static_cast<unsigned char>((exposureMs >> 8) & 0xFF),        // DELAY_1
+//     static_cast<unsigned char>((exposureMs >> 16) & 0xFF),       // DELAY_2
+//     static_cast<unsigned char>((exposureMs >> 24) & 0xFF)        // DELAY_3 (노출 시간 밀리초, 상위 바이트)
+//   };
+  
+//   printf("READ_PIXELS_DELAYED 명령 전송 (노출 시간: %.2f초)...\n", exposureTime);
+//   res = libusb_bulk_transfer(handle, bulkOutEndpoint, cmd, sizeof(cmd), &transferred, 5000);
+//   if (res < 0) {
+//     lastError = "READ_PIXELS_DELAYED 명령 전송 실패: " + std::string(libusb_error_name(res));
+//     return false;
+//   }
+  
+//   printf("노출 시작 (%.2f초)... 카메라 내부 타이머 사용 중\n", exposureTime);
+  
+//   // 노출 완료 대기 (내부 타이머 + 여유 시간)
+//   std::this_thread::sleep_for(std::chrono::milliseconds(exposureMs + 500));
+//   printf("노출 완료. 이미지 데이터 수신 시작...\n");
+  
+//   // 이미지 데이터 청크 단위로 읽기
+//   const int expectedTotalBytes = width * height * 2; // 2바이트(16비트) 픽셀
+//   unsigned char *imageBuffer = new unsigned char[expectedTotalBytes];
+//   int totalBytesReceived = 0;
+  
+//   // 여러 작은 청크로 데이터 읽기
+//   const int chunkSize = 64 * 1024; // 64KB
+//   int retryCount = 0;
+//   const int maxRetries = 3;
+  
+//   while (totalBytesReceived < expectedTotalBytes && retryCount < maxRetries) {
+//     int bytesToRead = std::min(chunkSize, expectedTotalBytes - totalBytesReceived);
+    
+//     printf("청크 데이터 요청: %d 바이트 (총 %d/%d)...\n", 
+//            bytesToRead, totalBytesReceived, expectedTotalBytes);
+    
+//     res = libusb_bulk_transfer(
+//       handle,
+//       bulkInEndpoint,
+//       imageBuffer + totalBytesReceived,
+//       bytesToRead,
+//       &transferred,
+//       10000 // 10초 타임아웃
+//     );
+    
+//     if (res < 0) {
+//       if (res == LIBUSB_ERROR_TIMEOUT) {
+//         retryCount++;
+//         printf("타임아웃 발생. 재시도 %d/%d...\n", retryCount, maxRetries);
+        
+//         // 첫 청크에서 타임아웃이 발생하고 재시도가 남아있으면 계속
+//         if (totalBytesReceived == 0 && retryCount < maxRetries) {
+//           std::this_thread::sleep_for(std::chrono::milliseconds(500));
+//           continue;
+//         }
+        
+//         // 이미 일부 데이터를 받았으면 부분 성공
+//         if (totalBytesReceived > 0) {
+//           printf("타임아웃 발생했지만 이미 %d 바이트를 수신했습니다. 부분 성공으로 간주합니다.\n", totalBytesReceived);
+//           break;
+//         }
+//       }
+      
+//       if (retryCount >= maxRetries) {
+//         delete[] imageBuffer;
+//         lastError = "이미지 데이터 수신 실패 (최대 재시도 횟수 초과): " + std::string(libusb_error_name(res));
+//         return false;
+//       }
+//     } else {
+//       // 성공적으로 데이터 수신
+//       totalBytesReceived += transferred;
+//       printf("청크 데이터 수신 완료: %d 바이트 (총 %d/%d)\n", 
+//              transferred, totalBytesReceived, expectedTotalBytes);
+      
+//       // 더 이상 데이터가 없으면 종료
+//       if (transferred < bytesToRead) {
+//         printf("더 이상 수신할 데이터가 없습니다. 전송 완료로 간주합니다.\n");
+//         break;
+//       }
+      
+//       // 짧은 대기 시간 추가
+//       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      
+//       // 재시도 카운터 초기화
+//       retryCount = 0;
+//     }
+//   }
+  
+//   printf("총 이미지 데이터 크기: %d 바이트 (예상: %d 바이트)\n", 
+//          totalBytesReceived, expectedTotalBytes);
+  
+//   // 데이터 수신 완전히 실패한 경우
+//   if (totalBytesReceived == 0) {
+//     delete[] imageBuffer;
+//     lastError = "이미지 데이터를 수신하지 못했습니다.";
+//     return false;
+//   }
+  
+//   // // 이미지 데이터 변환 (16비트)
+//   // int processablePixels = totalBytesReceived / 2;
+//   // for (int i = 0; i < processablePixels; i++) {
+//   //   buffer[i] = imageBuffer[i*2] | (imageBuffer[i*2+1] << 8);
+//   //   //buffer[i] = imageBuffer[i*2+1] | (imageBuffer[i*2] << 8);
+//   //   //buffer[i] = (imageBuffer[i*2] << 8) | imageBuffer[i*2+1];
+//   // }
+
+
+
+//   // 이미지 데이터 변환 전에 디버깅 정보 추가
+// printf("=== 이미지 데이터 분석 ===\n");
+// printf("총 수신 바이트: %d\n", totalBytesReceived);
+// printf("예상 픽셀 수: %d\n", width * height);
+// printf("예상 바이트 수: %d\n", width * height * 2);
+
+// // 첫 32바이트 원본 데이터 출력
+// printf("첫 32바이트 raw 데이터:\n");
+// for (int i = 0; i < 32 && i < totalBytesReceived; i++) {
+//   printf("%02x ", imageBuffer[i]);
+//   if ((i + 1) % 16 == 0) printf("\n");
+// }
+// printf("\n");
+
+// // 원본 바이트 순서로 복원 (수정 전 상태)
+// int processablePixels = totalBytesReceived / 2;
+// for (int i = 0; i < processablePixels; i++) {
+//   buffer[i] = imageBuffer[i*2] | (imageBuffer[i*2+1] << 8);
+// }
+
+// // 변환된 첫 16개 픽셀 값 출력
+// printf("변환된 첫 16개 픽셀 값:\n");
+// for (int i = 0; i < 16 && i < processablePixels; i++) {
+//   printf("%d ", buffer[i]);
+// }
+// printf("\n");
+
+// // 이미지 중앙 부분의 몇 픽셀도 확인
+// int centerStart = (height / 2) * width + (width / 2);
+// printf("중앙 부분 픽셀 값 (인덱스 %d부터):\n", centerStart);
+// for (int i = 0; i < 8 && (centerStart + i) < processablePixels; i++) {
+//   printf("%d ", buffer[centerStart + i]);
+// }
+// printf("\n");
+  
+//   // 데이터가 부족한 경우 남은 픽셀을 0으로 채움
+//   if (processablePixels < width * height) {
+//     printf("경고: 수신된 데이터가 예상보다 적습니다 (%d/%d 픽셀). 남은 픽셀을 0으로 채웁니다.\n", 
+//            processablePixels, width * height);
+//     for (int i = processablePixels; i < width * height; i++) {
+//       buffer[i] = 0;
+//     }
+//   }
+  
+//   delete[] imageBuffer;
+//   return true;
+// }
+
+
+// last
+// bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime, bool enableBinning) {
+//   int transferred = 0;
+//   int res = 0;
+  
+//   // 비닝에 따른 해상도 계산
+//   int actualWidth, actualHeight;
+//   unsigned char xBin, yBin;
+  
+//   if (enableBinning) {
+//     // 2x2 하드웨어 비닝 
+//     actualWidth = 1392;   // 1392 / 2
+//     actualHeight = 1040;  // 1040 / 2
+//     xBin = 2;
+//     yBin = 2;
+//     printf("=== 2x2 하드웨어 비닝 모드 ===\n");
+//   } else {
+//     // 1x1 풀 해상도
+//     actualWidth = 1392;
+//     actualHeight = 1040;
+//     xBin = 1;
+//     yBin = 1;
+//     printf("=== 풀 해상도 모드 ===\n");
+//   }
+  
+//   printf("해상도: %dx%d, 비닝: %dx%d, 노출 시간: %.2f초\n", 
+//          actualWidth, actualHeight, xBin, yBin, exposureTime);
+  
+//   // width, height 업데이트
+//   width = actualWidth;
+//   height = actualHeight;
+  
+//   // 1단계: sxClearPixels() - Wireshark에서 확인된 정확한 구조
+//   printf("1단계: sxClearPixels (flags=0x03)...\n");
+//   unsigned char clearCmd[8] = {0x40, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+//   res = libusb_bulk_transfer(handle, bulkOutEndpoint, clearCmd, 8, &transferred, 5000);
+//   if (res < 0) {
+//     lastError = "sxClearPixels 실패: " + std::string(libusb_error_name(res));
+//     return false;
+//   }
+//   printf("sxClearPixels 완료\n");
+  
+//   // 2단계: Host PC 타이밍으로 노출 제어
+//   printf("2단계: Host PC 타이밍으로 노출 제어...\n");
+//   uint32_t exposureMs = static_cast<uint32_t>(exposureTime * 1000.0f);
+//   printf("노출 진행 중... (%.2f초)\n", exposureTime);
+  
+//   // 30초 이상의 긴 노출인 경우 30초마다 vertical register 클리어
+//   if (exposureTime > 30.0f) {
+//     int clearInterval = 30000; // 30초
+//     int remainingMs = exposureMs;
+    
+//     while (remainingMs > 4000) { // 마지막 4초는 건드리지 않음
+//       int sleepTime = std::min(clearInterval, remainingMs - 4000);
+//       std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
+      
+//       // Vertical register 클리어 (NOWIPE_FRAME flag)
+//       unsigned char clearVertCmd[8] = {0x40, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00};
+//       libusb_bulk_transfer(handle, bulkOutEndpoint, clearVertCmd, 8, &transferred, 5000);
+//       printf("Vertical register 클리어 (남은 시간: %.1f초)\n", remainingMs / 1000.0f);
+      
+//       remainingMs -= sleepTime;
+//     }
+    
+//     // 마지막 남은 시간 대기
+//     if (remainingMs > 0) {
+//       std::this_thread::sleep_for(std::chrono::milliseconds(remainingMs));
+//     }
+//   } else {
+//     // 30초 이하면 그냥 대기
+//     std::this_thread::sleep_for(std::chrono::milliseconds(exposureMs));
+//   }
+  
+//   printf("노출 완료\n");
+  
+//   // 3단계: sxReadPixels() - 비닝에 맞는 파라미터로 설정
+//   printf("3단계: sxReadPixels로 이미지 읽기...\n");
+  
+//   // 비닝에 따른 WIDTH, HEIGHT 바이트 계산
+//   unsigned char widthL = actualWidth & 0xFF;
+//   unsigned char widthH = (actualWidth >> 8) & 0xFF;
+//   unsigned char heightL = actualHeight & 0xFF;
+//   unsigned char heightH = (actualHeight >> 8) & 0xFF;
+  
+//   unsigned char readCmd[18] = {
+//     // 헤더 (8바이트) - Wireshark 분석 결과
+//     0x40, 0x03, 0x03, 0x00, 0x00, 0x00, 0x0A, 0x00,
+    
+//     // 파라미터 (10바이트) - 비닝 적용
+//     0x00, 0x00,       // X_OFFSET_L, X_OFFSET_H
+//     0x00, 0x00,       // Y_OFFSET_L, Y_OFFSET_H  
+//     widthL, widthH,   // WIDTH_L, WIDTH_H (비닝에 따라 동적) // 아니다 그냥 풀해상도 적어야함
+//     heightL, heightH, // HEIGHT_L, HEIGHT_H (비닝에 따라 동적) // 아니다 그냥 풀해상도 적어야함
+//     xBin, yBin        // X_BIN, Y_BIN (비닝 설정)
+//   };
+  
+//   printf("파라미터: WIDTH=%d(%02x %02x), HEIGHT=%d(%02x %02x), BIN=%dx%d\n",
+//          actualWidth, widthL, widthH, actualHeight, heightL, heightH, xBin, yBin);
+  
+//   // USB 명령 전체 덤프
+//   printf("USB 명령 덤프: ");
+//   for (int i = 0; i < 18; i++) {
+//     printf("%02x ", readCmd[i]);
+//   }
+//   printf("\n");
+  
+//   res = libusb_bulk_transfer(handle, bulkOutEndpoint, readCmd, 18, &transferred, 5000);
+//   if (res < 0) {
+//     lastError = "sxReadPixels 실패: " + std::string(libusb_error_name(res));
+//     return false;
+//   }
+//   printf("sxReadPixels 명령 전송 완료\n");
+  
+//   // 4단계: 이미지 데이터 수신
+//   printf("4단계: 이미지 데이터 수신 중...\n");
+//   const int expectedTotalBytes = actualWidth/2 * actualHeight/2 * 2; // 16비트 이미지
+//   unsigned char *imageBuffer = new unsigned char[expectedTotalBytes];
+//   int totalBytesReceived = 0;
+  
+//   printf("예상 이미지 크기: %d 바이트 (%d x %d x 2)\n", expectedTotalBytes, actualWidth/2, actualHeight/2);
+  
+//   // 청크 단위로 데이터 읽기
+//   const int chunkSize = 64 * 1024; // 64KB 청크
+//   int retryCount = 0;
+//   const int maxRetries = 5;
+  
+//   while (totalBytesReceived < expectedTotalBytes && retryCount < maxRetries) {
+//     int bytesToRead = std::min(chunkSize, expectedTotalBytes - totalBytesReceived);
+    
+//     printf("청크 데이터 요청: %d 바이트 (총 %d/%d)...\n", 
+//            bytesToRead, totalBytesReceived, expectedTotalBytes);
+    
+//     res = libusb_bulk_transfer(
+//       handle,
+//       bulkInEndpoint,
+//       imageBuffer + totalBytesReceived,
+//       bytesToRead,
+//       &transferred,
+//       15000 // 15초 타임아웃
+//     );
+    
+//     if (res < 0) {
+//       if (res == LIBUSB_ERROR_TIMEOUT) {
+//         retryCount++;
+//         printf("타임아웃 발생. 재시도 %d/%d...\n", retryCount, maxRetries);
+        
+//         // 첫 청크에서 타임아웃이 발생하고 재시도가 남아있으면 계속
+//         if (totalBytesReceived == 0 && retryCount < maxRetries) {
+//           std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+//           continue;
+//         }
+        
+//         // 이미 일부 데이터를 받았으면 부분 성공
+//         if (totalBytesReceived > 0) {
+//           printf("타임아웃 발생했지만 이미 %d 바이트를 수신했습니다. 부분 성공으로 간주합니다.\n", totalBytesReceived);
+//           break;
+//         }
+//       }
+      
+//       if (retryCount >= maxRetries) {
+//         delete[] imageBuffer;
+//         lastError = "이미지 데이터 수신 실패 (최대 재시도 횟수 초과): " + std::string(libusb_error_name(res));
+//         return false;
+//       }
+//     } else {
+//       // 성공적으로 데이터 수신
+//       totalBytesReceived += transferred;
+//       printf("청크 데이터 수신 완료: %d 바이트 (총 %d/%d)\n", 
+//              transferred, totalBytesReceived, expectedTotalBytes);
+      
+//       // 더 이상 데이터가 없으면 종료
+//       if (transferred < bytesToRead) {
+//         printf("더 이상 수신할 데이터가 없습니다. 전송 완료로 간주합니다.\n");
+//         break;
+//       }
+      
+//       // 짧은 대기 시간 추가
+//       std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      
+//       // 재시도 카운터 초기화
+//       retryCount = 0;
+//     }
+//   }
+  
+//   printf("총 이미지 데이터 크기: %d 바이트 (예상: %d 바이트)\n", 
+//          totalBytesReceived, expectedTotalBytes);
+  
+//   // 데이터 수신 완전히 실패한 경우
+//   if (totalBytesReceived == 0) {
+//     delete[] imageBuffer;
+//     lastError = "이미지 데이터를 수신하지 못했습니다.";
+//     return false;
+//   }
+  
+//   // 이미지 데이터 변환 및 디버깅
+//   printf("=== 이미지 데이터 분석 ===\n");
+//   printf("총 수신 바이트: %d\n", totalBytesReceived);
+//   printf("실제 해상도: %dx%d\n", actualWidth, actualHeight);
+//   printf("예상 픽셀 수: %d\n", actualWidth * actualHeight);
+//   printf("예상 바이트 수: %d\n", actualWidth * actualHeight * 2);
+
+//   // 첫 32바이트 원본 데이터 출력
+//   printf("첫 32바이트 raw 데이터:\n");
+//   for (int i = 0; i < 32 && i < totalBytesReceived; i++) {
+//     printf("%02x ", imageBuffer[i]);
+//     if ((i + 1) % 16 == 0) printf("\n");
+//   }
+//   printf("\n");
+
+//   // 실제 수신된 데이터로 16비트 픽셀 변환
+//   int processablePixels = totalBytesReceived / 2;
+//   for (int i = 0; i < processablePixels; i++) {
+//     buffer[i] = imageBuffer[i*2] | (imageBuffer[i*2+1] << 8);
+//   }
+
+//   // 변환된 첫 16개 픽셀 값 출력
+//   printf("변환된 첫 16개 픽셀 값:\n");
+//   for (int i = 0; i < 16 && i < processablePixels; i++) {
+//     printf("%d ", buffer[i]);
+//   }
+//   printf("\n");
+
+//   // 이미지 중앙 부분의 몇 픽셀도 확인
+//   int centerStart = (actualHeight / 2) * actualWidth + (actualWidth / 2);
+//   if (centerStart + 8 < processablePixels) {
+//     printf("중앙 부분 픽셀 값 (인덱스 %d부터):\n", centerStart);
+//     for (int i = 0; i < 8 && (centerStart + i) < processablePixels; i++) {
+//       printf("%d ", buffer[centerStart + i]);
+//     }
+//     printf("\n");
+//   }
+  
+//   delete[] imageBuffer;
+//   printf("=== 하드웨어 비닝 촬영 완료 ===\n");
+//   return true;
+// }
+
+bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &height, float exposureTime, bool enableBinning) {
   int transferred = 0;
   int res = 0;
   
-  // 변환: 밀리초 단위 노출 시간 계산
-  uint32_t exposureMs = static_cast<uint32_t>(exposureTime * 1000.0f);
+  // 비닝에 따른 해상도 계산
+  int actualWidth, actualHeight;
+  unsigned char xBin, yBin;
   
-  // READ_PIXELS_DELAYED 명령 구성 (14바이트 파라미터)
-  unsigned char cmd[22] = {
-    // 명령 헤더 (8바이트)
-    0x40, 0x02, 0x00, 0x00, 0x00, 0x00, 14, 0,
-    
-    // 파라미터 블록 (14바이트)
-    0, 0,                                        // X_OFFSET_L, X_OFFSET_H
-    0, 0,                                        // Y_OFFSET_L, Y_OFFSET_H
-    0x70, 0x05,                                  // WIDTH_L, WIDTH_H (1392)
-    0x10, 0x04,                                  // HEIGHT_L, HEIGHT_H (1040)
-    1, 1,                                        // X_BIN, Y_BIN
-    static_cast<unsigned char>(exposureMs & 0xFF),               // DELAY_0 (노출 시간 밀리초, 하위 바이트)
-    static_cast<unsigned char>((exposureMs >> 8) & 0xFF),        // DELAY_1
-    static_cast<unsigned char>((exposureMs >> 16) & 0xFF),       // DELAY_2
-    static_cast<unsigned char>((exposureMs >> 24) & 0xFF)        // DELAY_3 (노출 시간 밀리초, 상위 바이트)
-  };
-  
-  printf("READ_PIXELS_DELAYED 명령 전송 (노출 시간: %.2f초)...\n", exposureTime);
-  res = libusb_bulk_transfer(handle, bulkOutEndpoint, cmd, sizeof(cmd), &transferred, 5000);
-  if (res < 0) {
-    lastError = "READ_PIXELS_DELAYED 명령 전송 실패: " + std::string(libusb_error_name(res));
-    return false;
+  if (enableBinning) {
+    // 2x2 하드웨어 비닝 
+    actualWidth = 696;   // 1392 / 2
+    actualHeight = 520;  // 1040 / 2
+    xBin = 2;
+    yBin = 2;
+    printf("=== 2x2 하드웨어 비닝 모드 ===\n");
+  } else {
+    // 1x1 풀 해상도
+    actualWidth = 1392;
+    actualHeight = 1040;
+    xBin = 1;
+    yBin = 1;
+    printf("=== 풀 해상도 모드 ===\n");
   }
   
-  printf("노출 시작 (%.2f초)... 카메라 내부 타이머 사용 중\n", exposureTime);
+  printf("해상도: %dx%d, 비닝: %dx%d, 노출 시간: %.2f초\n", 
+         actualWidth, actualHeight, xBin, yBin, exposureTime);
   
-  // 노출 완료 대기 (내부 타이머 + 여유 시간)
-  std::this_thread::sleep_for(std::chrono::milliseconds(exposureMs + 500));
-  printf("노출 완료. 이미지 데이터 수신 시작...\n");
+  // width, height 업데이트
+  width = actualWidth;
+  height = actualHeight;
   
-  // 이미지 데이터 청크 단위로 읽기
-  const int expectedTotalBytes = width * height * 2; // 2바이트(16비트) 픽셀
+  // 1단계: sxClearPixels() - Wireshark에서 확인된 정확한 구조
+  printf("1단계: sxClearPixels (flags=0x03)...\n");
+  unsigned char clearCmd[8] = {0x40, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+  res = libusb_bulk_transfer(handle, bulkOutEndpoint, clearCmd, 8, &transferred, 5000);
+  if (res < 0) {
+    lastError = "sxClearPixels 실패: " + std::string(libusb_error_name(res));
+    return false;
+  }
+  printf("sxClearPixels 완료\n");
+  
+  // 2단계: Host PC 타이밍으로 노출 제어
+  printf("2단계: Host PC 타이밍으로 노출 제어...\n");
+  uint32_t exposureMs = static_cast<uint32_t>(exposureTime * 1000.0f);
+  printf("노출 진행 중... (%.2f초)\n", exposureTime);
+  
+  // 30초 이상의 긴 노출인 경우 30초마다 vertical register 클리어
+  if (exposureTime > 30.0f) {
+    int clearInterval = 30000; // 30초
+    int remainingMs = exposureMs;
+    
+    while (remainingMs > 4000) { // 마지막 4초는 건드리지 않음
+      int sleepTime = std::min(clearInterval, remainingMs - 4000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
+      
+      // Vertical register 클리어 (NOWIPE_FRAME flag)
+      unsigned char clearVertCmd[8] = {0x40, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00};
+      libusb_bulk_transfer(handle, bulkOutEndpoint, clearVertCmd, 8, &transferred, 5000);
+      printf("Vertical register 클리어 (남은 시간: %.1f초)\n", remainingMs / 1000.0f);
+      
+      remainingMs -= sleepTime;
+    }
+    
+    // 마지막 남은 시간 대기
+    if (remainingMs > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(remainingMs));
+    }
+  } else {
+    // 30초 이하면 그냥 대기
+    std::this_thread::sleep_for(std::chrono::milliseconds(exposureMs));
+  }
+  
+  printf("노출 완료\n");
+  
+  // 3단계: sxReadPixels() - WIDTH/HEIGHT는 항상 원본 해상도
+  printf("3단계: sxReadPixels로 이미지 읽기...\n");
+  
+  // WIDTH, HEIGHT는 항상 1392x1040 (원본 해상도)
+  unsigned char readCmd[18] = {
+    // 헤더 (8바이트) - Wireshark 분석 결과
+    0x40, 0x03, 0x03, 0x00, 0x00, 0x00, 0x0A, 0x00,
+    
+    // 파라미터 (10바이트) - 원본 해상도 + 비닝 파라미터
+    0x00, 0x00,       // X_OFFSET_L, X_OFFSET_H
+    0x00, 0x00,       // Y_OFFSET_L, Y_OFFSET_H  
+    0x70, 0x05,       // WIDTH_L, WIDTH_H (1392 = 0x0570)
+    0x10, 0x04,       // HEIGHT_L, HEIGHT_H (1040 = 0x0410)
+    xBin, yBin        // X_BIN, Y_BIN (비닝 설정)
+  };
+  
+  printf("파라미터: WIDTH=1392(70 05), HEIGHT=1040(10 04), BIN=%dx%d\n", xBin, yBin);
+  printf("실제 출력 해상도: %dx%d\n", actualWidth, actualHeight);
+  
+  // USB 명령 전체 덤프
+  printf("USB 명령 덤프: ");
+  for (int i = 0; i < 18; i++) {
+    printf("%02x ", readCmd[i]);
+  }
+  printf("\n");
+  
+  res = libusb_bulk_transfer(handle, bulkOutEndpoint, readCmd, 18, &transferred, 5000);
+  if (res < 0) {
+    lastError = "sxReadPixels 실패: " + std::string(libusb_error_name(res));
+    return false;
+  }
+  printf("sxReadPixels 명령 전송 완료\n");
+  
+  // 4단계: 이미지 데이터 수신
+  printf("4단계: 이미지 데이터 수신 중...\n");
+  const int expectedTotalBytes = actualWidth * actualHeight * 2; // 16비트 이미지
   unsigned char *imageBuffer = new unsigned char[expectedTotalBytes];
   int totalBytesReceived = 0;
   
-  // 여러 작은 청크로 데이터 읽기
-  const int chunkSize = 64 * 1024; // 64KB
+  printf("예상 이미지 크기: %d 바이트 (%d x %d x 2)\n", expectedTotalBytes, actualWidth, actualHeight);
+  
+  // 청크 단위로 데이터 읽기
+  const int chunkSize = 64 * 1024; // 64KB 청크
   int retryCount = 0;
-  const int maxRetries = 3;
+  const int maxRetries = 5;
   
   while (totalBytesReceived < expectedTotalBytes && retryCount < maxRetries) {
     int bytesToRead = std::min(chunkSize, expectedTotalBytes - totalBytesReceived);
@@ -736,7 +1222,7 @@ bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &hei
       imageBuffer + totalBytesReceived,
       bytesToRead,
       &transferred,
-      10000 // 10초 타임아웃
+      15000 // 15초 타임아웃
     );
     
     if (res < 0) {
@@ -746,7 +1232,7 @@ bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &hei
         
         // 첫 청크에서 타임아웃이 발생하고 재시도가 남아있으면 계속
         if (totalBytesReceived == 0 && retryCount < maxRetries) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
           continue;
         }
         
@@ -792,24 +1278,97 @@ bool SXCamera::CaptureImageInternal(unsigned short *buffer, int &width, int &hei
     return false;
   }
   
-  // 이미지 데이터 변환 (16비트)
+  // 이미지 데이터 변환 및 디버깅
+  printf("=== 이미지 데이터 분석 ===\n");
+  printf("총 수신 바이트: %d\n", totalBytesReceived);
+  printf("실제 해상도: %dx%d (2x2 비닝)\n", actualWidth, actualHeight);
+  printf("예상 픽셀 수: %d\n", actualWidth * actualHeight);
+  printf("예상 바이트 수: %d\n", actualWidth * actualHeight * 2);
+
+  // 첫 32바이트 원본 데이터 출력
+  printf("첫 32바이트 raw 데이터:\n");
+  for (int i = 0; i < 32 && i < totalBytesReceived; i++) {
+    printf("%02x ", imageBuffer[i]);
+    if ((i + 1) % 16 == 0) printf("\n");
+  }
+  printf("\n");
+
+  // 실제 수신된 데이터로 16비트 픽셀 변환
   int processablePixels = totalBytesReceived / 2;
   for (int i = 0; i < processablePixels; i++) {
     buffer[i] = imageBuffer[i*2] | (imageBuffer[i*2+1] << 8);
   }
-  
-  // 데이터가 부족한 경우 남은 픽셀을 0으로 채움
-  if (processablePixels < width * height) {
-    printf("경고: 수신된 데이터가 예상보다 적습니다 (%d/%d 픽셀). 남은 픽셀을 0으로 채웁니다.\n", 
-           processablePixels, width * height);
-    for (int i = processablePixels; i < width * height; i++) {
-      buffer[i] = 0;
+
+  // 변환된 첫 16개 픽셀 값 출력
+  printf("변환된 첫 16개 픽셀 값:\n");
+  for (int i = 0; i < 16 && i < processablePixels; i++) {
+    printf("%d ", buffer[i]);
+  }
+  printf("\n");
+
+  // 이미지 중앙 부분의 몇 픽셀도 확인
+  int centerStart = (actualHeight / 2) * actualWidth + (actualWidth / 2);
+  if (centerStart + 8 < processablePixels) {
+    printf("중앙 부분 픽셀 값 (인덱스 %d부터):\n", centerStart);
+    for (int i = 0; i < 8 && (centerStart + i) < processablePixels; i++) {
+      printf("%d ", buffer[centerStart + i]);
     }
+    printf("\n");
   }
   
   delete[] imageBuffer;
+  printf("=== 하드웨어 비닝 촬영 완료 ===\n");
   return true;
 }
+
+// Napi::Value SXCamera::CaptureImage(const Napi::CallbackInfo& info) {
+//   Napi::Env env = info.Env();
+  
+//   if (!handle) {
+//     Napi::Error::New(env, "카메라가 연결되어 있지 않습니다.").ThrowAsJavaScriptException();
+//     return env.Undefined();
+//   }
+  
+//   // 노출 시간 매개변수 (기본값: 1초)
+//   float exposureTime = 1.0;
+//   if (info.Length() >= 1 && info[0].IsNumber()) {
+//     exposureTime = info[0].As<Napi::Number>().FloatValue();
+//   }
+  
+//   // 이미지 크기 (ECHO2 카메라 해상도: 1392x1040)
+//   int width = this->width;
+//   int height = this->height;
+//   int pixelCount = width * height;
+  
+//   // 이미지 버퍼 할당
+//   unsigned short *buffer = new unsigned short[pixelCount];
+  
+//   // 이미지 캡처
+//   bool success = CaptureImageInternal(buffer, width, height, exposureTime);
+  
+//   if (!success) {
+//     delete[] buffer;
+//     Napi::Error::New(env, lastError).ThrowAsJavaScriptException();
+//     return env.Undefined();
+//   }
+  
+//   // Node.js 버퍼로 변환
+//   Napi::ArrayBuffer arrayBuffer = Napi::ArrayBuffer::New(env, buffer, pixelCount * sizeof(unsigned short), 
+//     [](Napi::Env env, void* data) {
+//       delete[] static_cast<unsigned short*>(data);
+//     });
+  
+//   Napi::Uint16Array result = Napi::Uint16Array::New(env, pixelCount, arrayBuffer, 0);
+  
+//   // 이미지 정보를 포함한 객체 반환
+//   Napi::Object imageObj = Napi::Object::New(env);
+//   imageObj.Set("data", result);
+//   imageObj.Set("width", Napi::Number::New(env, width));
+//   imageObj.Set("height", Napi::Number::New(env, height));
+//   imageObj.Set("bitsPerPixel", Napi::Number::New(env, bitsPerPixel));
+  
+//   return imageObj;
+// }
 
 Napi::Value SXCamera::CaptureImage(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -819,22 +1378,41 @@ Napi::Value SXCamera::CaptureImage(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
   
-  // 노출 시간 매개변수 (기본값: 1초)
+  // 첫 번째 파라미터: 노출 시간 (기본값: 1초)
   float exposureTime = 1.0;
   if (info.Length() >= 1 && info[0].IsNumber()) {
     exposureTime = info[0].As<Napi::Number>().FloatValue();
   }
   
-  // 이미지 크기 (ECHO2 카메라 해상도: 1392x1040)
-  int width = this->width;
-  int height = this->height;
+  // 두 번째 파라미터: 하드웨어 비닝 활성화 (기본값: true - 2x2 비닝)
+  bool enableBinning = true;
+  if (info.Length() >= 2 && info[1].IsBoolean()) {
+    enableBinning = info[1].As<Napi::Boolean>().Value();
+  }
+  
+  // 비닝에 따른 해상도 설정
+  int width, height;
+  if (enableBinning) {
+    // 2x2 하드웨어 비닝
+    width = 696;   // 1392 / 2
+    height = 520;  // 1040 / 2
+    printf("2x2 하드웨어 비닝 모드로 이미지 캡처\n");
+  } else {
+    // 1x1 풀 해상도
+    width = 1392;
+    height = 1040;
+    printf("풀 해상도 모드로 이미지 캡처\n");
+  }
+  
   int pixelCount = width * height;
+  printf("이미지 캡처 시작: %dx%d (%d 픽셀), 노출 시간: %.2f초\n", 
+         width, height, pixelCount, exposureTime);
   
   // 이미지 버퍼 할당
   unsigned short *buffer = new unsigned short[pixelCount];
   
-  // 이미지 캡처
-  bool success = CaptureImageInternal(buffer, width, height, exposureTime);
+  // 이미지 캡처 실행
+  bool success = CaptureImageInternal(buffer, width, height, exposureTime, enableBinning);
   
   if (!success) {
     delete[] buffer;
@@ -842,12 +1420,13 @@ Napi::Value SXCamera::CaptureImage(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
   
-  // Node.js 버퍼로 변환
+  // Node.js ArrayBuffer로 변환 (자동 메모리 관리)
   Napi::ArrayBuffer arrayBuffer = Napi::ArrayBuffer::New(env, buffer, pixelCount * sizeof(unsigned short), 
     [](Napi::Env env, void* data) {
       delete[] static_cast<unsigned short*>(data);
     });
   
+  // Uint16Array 뷰 생성
   Napi::Uint16Array result = Napi::Uint16Array::New(env, pixelCount, arrayBuffer, 0);
   
   // 이미지 정보를 포함한 객체 반환
@@ -855,7 +1434,13 @@ Napi::Value SXCamera::CaptureImage(const Napi::CallbackInfo& info) {
   imageObj.Set("data", result);
   imageObj.Set("width", Napi::Number::New(env, width));
   imageObj.Set("height", Napi::Number::New(env, height));
-  imageObj.Set("bitsPerPixel", Napi::Number::New(env, bitsPerPixel));
+  imageObj.Set("bitsPerPixel", Napi::Number::New(env, 16));
+  imageObj.Set("binning", Napi::String::New(env, enableBinning ? "2x2" : "1x1"));
+  imageObj.Set("pixelCount", Napi::Number::New(env, pixelCount));
+  imageObj.Set("exposureTime", Napi::Number::New(env, exposureTime));
+  
+  printf("이미지 캡처 완료: %dx%d, %s, 16비트\n", 
+         width, height, enableBinning ? "2x2 비닝" : "풀 해상도");
   
   return imageObj;
 }
