@@ -9,7 +9,10 @@
     "build": "cd src && node-gyp rebuild"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^5.1.0",
     "node-addon-api": "^5.0.0",
+    "node-cron": "^4.2.1",
     "onoff": "^6.0.3",
     "sharp": "^0.34.2"
   },
